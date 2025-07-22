@@ -1,8 +1,12 @@
 name: Update IP List
 
+concurrency:
+  group: ip-update
+  cancel-in-progress: true
+
 on:
   schedule:
-    - cron: '0 9,18 * * *'  # 每天UTC时间上午9点和下午6点
+    - cron: '0 1,10 * * *'  # 每天UTC时间上午9点和下午6点
   workflow_dispatch:        # 保留手动触发
   push:
 
