@@ -5,7 +5,7 @@ import os
 import ssl
 from requests.adapters import HTTPAdapter
 from urllib3.poolmanager import PoolManager
-from collections import OrderedDict
+from ipaddress import ip_address
 
 class TLSAdapter(HTTPAdapter):
     def init_poolmanager(self, *args, **kwargs):
@@ -13,11 +13,18 @@ class TLSAdapter(HTTPAdapter):
         kwargs['ssl_context'] = context
         return super().init_poolmanager(*args, **kwargs)
 
+def is_valid_ip(ip):
+    try:
+        ip_address(ip)
+        return True
+    except ValueError:
+        return False
+
 urls = [
     #'https://monitor.gacjie.cn/page/cloudflare/ipv4.html',   # HTML 
     'https://ip.164746.xyz',                                  # HTML
     'https://raw.githubusercontent.com/lu-lingyun/CloudflareST/refs/heads/main/TLS.txt',  # 纯文本
-    'https://cf.090227.xyz'           # JSON 
+    'https://cf.090227.xyz'           # JSON (其实是动态生成HTML表格)
 ]
 
 ip_pattern = r'\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}'
@@ -48,7 +55,7 @@ for url in urls:
             data = response.json()
             if isinstance(data, dict) and 'data' in data:
                 for ip in data['data']:
-                    if re.fullmatch(ip_pattern, ip):
+                    if is_valid_ip(ip):
                         extracted.append(ip)
         except Exception as e:
             print(f"[错误] JSON 解析失败：{e}")
@@ -59,25 +66,32 @@ for url in urls:
         lines = response.text.splitlines()
         for line in lines:
             ip_matches = re.findall(ip_pattern, line)
-            extracted.extend(ip_matches)
+            for ip in ip_matches:
+                if is_valid_ip(ip):
+                    extracted.append(ip)
 
     # HTML 格式
     else:
         soup = BeautifulSoup(response.text, 'html.parser')
+        # 注意这里 https://cf.090227.xyz 返回的是动态生成的表格结构，使用tr获取行
+        elements = soup.find_all('tr') if url in [
+            'https://ip.164746.xyz',
+            'https://cf.090227.xyz'            
+        ] else soup.find_all('li')
 
-# 针对特定页面单独处理
-if url == 'https://cf.090227.xyz':
-    fonts = soup.find_all('font')
-    for font in fonts:
-        text = font.get_text()
-        ip_matches = re.findall(ip_pattern, text)
-        extracted.extend(ip_matches)
-else:
-    elements = soup.find_all('tr') if url == 'https://ip.164746.xyz' else soup.find_all('li')
-    for element in elements:
-        text = element.get_text()
-        ip_matches = re.findall(ip_pattern, text)
-        extracted.extend(ip_matches)
+        for element in elements:
+            tds = element.find_all('td')
+            for td in tds:
+                # 合并所有直接字符串节点，避免 <b> 拆分数字导致拼接错误
+                parts = []
+                for node in td.descendants:
+                    if isinstance(node, str):
+                        parts.append(node)
+                combined = ''.join(parts).strip()
+                # 只保留有效 IP
+                for match in re.findall(ip_pattern, combined):
+                    if is_valid_ip(match):
+                        extracted.append(match)
 
     # 去重并仅保留前 5 条有效 IP
     count = 0
