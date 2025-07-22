@@ -15,7 +15,7 @@ class TLSAdapter(HTTPAdapter):
 urls = [
     #'https://monitor.gacjie.cn/page/cloudflare/ipv4.html',   # HTML
     'https://ip.164746.xyz',                                  # HTML
-    'https://raw.githubusercontent.com/lu-lingyun/CloudflareST/refs/heads/main/TLS.txt',  # 纯文本
+    #'https://raw.githubusercontent.com/lu-lingyun/CloudflareST/refs/heads/main/TLS.txt',  # 纯文本
     #'https://addressesapi.090227.xyz/ip.164746.xyz'           # JSON
 ]
 
