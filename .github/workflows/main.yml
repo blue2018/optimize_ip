@@ -2,7 +2,7 @@ name: Update IP List
 
 on:
   schedule:
-    - cron: '0 1,13 * * *'  # 每天UTC 1:00和13:00
+    - cron: '0 9,18 * * *'  # 每天UTC时间上午9点和下午6点
   workflow_dispatch:        # 保留手动触发
   push:
 
