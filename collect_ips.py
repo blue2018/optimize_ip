@@ -5,6 +5,7 @@ import os
 import ssl
 from requests.adapters import HTTPAdapter
 from urllib3.poolmanager import PoolManager
+from collections import OrderedDict
 
 class TLSAdapter(HTTPAdapter):
     def init_poolmanager(self, *args, **kwargs):
@@ -13,10 +14,10 @@ class TLSAdapter(HTTPAdapter):
         return super().init_poolmanager(*args, **kwargs)
 
 urls = [
-    #'https://monitor.gacjie.cn/page/cloudflare/ipv4.html',   # HTML
+    #'https://monitor.gacjie.cn/page/cloudflare/ipv4.html',   # HTML 
     'https://ip.164746.xyz',                                  # HTML
     'https://raw.githubusercontent.com/lu-lingyun/CloudflareST/refs/heads/main/TLS.txt',  # 纯文本
-    #'https://addressesapi.090227.xyz/ip.164746.xyz'           # JSON
+    'https://cf.090227.xyz'           # JSON 
 ]
 
 ip_pattern = r'\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}'
@@ -27,7 +28,8 @@ if os.path.exists('ip.txt'):
 session = requests.Session()
 session.mount('https://', TLSAdapter())
 
-unique_ips = set()
+ip_seen = set()
+ip_list = []
 
 for url in urls:
     try:
@@ -38,42 +40,53 @@ for url in urls:
         continue
 
     content_type = response.headers.get('Content-Type', '')
+    extracted = []
 
-    # 判断 JSON 格式
+    # JSON 格式
     if 'application/json' in content_type or url.endswith('.json'):
         try:
             data = response.json()
             if isinstance(data, dict) and 'data' in data:
-                ip_list = data['data']
-                for ip in ip_list:
+                for ip in data['data']:
                     if re.fullmatch(ip_pattern, ip):
-                        unique_ips.add(ip)
+                        extracted.append(ip)
         except Exception as e:
             print(f"[错误] JSON 解析失败：{e}")
             continue
 
-    # 判断纯文本格式
+    # 文本格式
     elif url.endswith('.txt') or 'text/plain' in content_type:
         lines = response.text.splitlines()
         for line in lines:
             ip_matches = re.findall(ip_pattern, line)
-            unique_ips.update(ip_matches)
+            extracted.extend(ip_matches)
 
-    # 其他情况默认当作 HTML
+    # HTML 格式
     else:
         soup = BeautifulSoup(response.text, 'html.parser')
         elements = soup.find_all('tr') if url in [
-            #'https://monitor.gacjie.cn/page/cloudflare/ipv4.html',
-            'https://ip.164746.xyz'
+            'https://ip.164746.xyz',
+            'https://cf.090227.xyz'            
         ] else soup.find_all('li')
+
         for element in elements:
             text = element.get_text()
             ip_matches = re.findall(ip_pattern, text)
-            unique_ips.update(ip_matches)
+            extracted.extend(ip_matches)
 
-# 写入 IP 文件
+    # 去重并仅保留前 5 条有效 IP
+    count = 0
+    for ip in extracted:
+        if ip not in ip_seen:
+            ip_seen.add(ip)
+            ip_list.append(ip)
+            count += 1
+            if count == 5:
+                break
+
+# 写入文件（按原始顺序）
 with open('ip.txt', 'w') as file:
-    for ip in sorted(unique_ips):
+    for ip in ip_list:
         file.write(ip + '\n')
 
-print(f"✅ 共提取 {len(unique_ips)} 个唯一 IP 地址，已保存到 ip.txt。")
+print(f"✅ 共提取 {len(ip_list)} 个唯一 IP 地址（每源前 5 条，去重后），已保存到 ip.txt。")
