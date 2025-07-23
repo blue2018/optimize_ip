@@ -21,7 +21,7 @@ def is_valid_ip(ip):
         return False
 
 urls = [
-    #'https://monitor.gacjie.cn/page/cloudflare/ipv4.html',   # HTML 
+    #'https://cf.vvhan.com/',   # HTML 
     'https://ip.164746.xyz',                                  # HTML
     'https://raw.githubusercontent.com/lu-lingyun/CloudflareST/refs/heads/main/TLS.txt',  # 纯文本
     'https://addressesapi.090227.xyz/CloudFlareYes'           # JSON (其实是动态生成HTML表格)
@@ -75,7 +75,7 @@ for url in urls:
         soup = BeautifulSoup(response.text, 'html.parser')
         # 注意这里 https://cf.090227.xyz 返回的是动态生成的表格结构，使用tr获取行
         elements = soup.find_all('tr') if url in [
-            #'https://monitor.gacjie.cn/page/cloudflare/ipv4.html',
+            #'https://cf.vvhan.com/',
             'https://ip.164746.xyz'
         ] else soup.find_all('li')
 
