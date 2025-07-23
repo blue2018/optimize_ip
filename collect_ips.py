@@ -23,7 +23,7 @@ def is_valid_ip(ip):
 urls = [
     #'https://cf.vvhan.com/',   # HTML 
     'https://ip.164746.xyz',                                  # HTML
-    'https://raw.githubusercontent.com/lu-lingyun/CloudflareST/refs/heads/main/TLS.txt',  # 纯文本
+    'https://github.com/hubbylei/bestcf/raw/refs/heads/main/bestcf.txt',  # 纯文本
     'https://addressesapi.090227.xyz/CloudFlareYes'           # JSON (其实是动态生成HTML表格)
 ]
 
