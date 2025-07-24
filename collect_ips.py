@@ -1,8 +1,17 @@
-from requests_html import HTMLSession
+import requests
 from bs4 import BeautifulSoup
 import re
 import os
+from requests.adapters import HTTPAdapter
+import ssl
+from urllib3.poolmanager import PoolManager
 from ipaddress import ip_address
+
+class TLSAdapter(HTTPAdapter):
+    def init_poolmanager(self, *args, **kwargs):
+        context = ssl.create_default_context()
+        kwargs['ssl_context'] = context
+        return super().init_poolmanager(*args, **kwargs)
 
 def is_valid_ip(ip):
     try:
@@ -12,29 +21,28 @@ def is_valid_ip(ip):
         return False
 
 urls = [
-    'https://cf.vvhan.com/',   # 需要JS渲染
-    'https://ip.164746.xyz',                                  # HTML
+    'https://cf.vvhan.com/',   # HTML
+    'https://ip.164746.xyz',  # HTML
     'https://github.com/hubbylei/bestcf/raw/refs/heads/main/bestcf.txt',  # 纯文本
-    'https://addressesapi.090227.xyz/CloudFlareYes'           # JSON (其实是动态生成HTML表格)
+    'https://addressesapi.090227.xyz/CloudFlareYes'  # JSON
 ]
 
-ip_pattern = r'\b\d{1,3}(?:\.\d{1,3}){3}\b'
+ip_pattern = r'\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}'
 
 if os.path.exists('ip.txt'):
     os.remove('ip.txt')
 
-session = HTMLSession()
+session = requests.Session()
+session.mount('https://', TLSAdapter())
 
 ip_seen = set()
 ip_list = []
 
 for url in urls:
     try:
-        response = session.get(url, timeout=15)
-        # 针对 https://cf.vvhan.com/ 需要渲染JS
-        if url == 'https://cf.vvhan.com/':
-            response.html.render(timeout=20, sleep=2)  # 渲染JS，睡2秒保证内容加载
-    except Exception as e:
+        response = session.get(url, timeout=10)
+        response.raise_for_status()
+    except requests.exceptions.RequestException as e:
         print(f"[错误] 无法请求 {url}：{e}")
         continue
 
@@ -53,7 +61,7 @@ for url in urls:
             print(f"[错误] JSON 解析失败：{e}")
             continue
 
-    # 纯文本格式
+    # 文本格式
     elif url.endswith('.txt') or 'text/plain' in content_type:
         lines = response.text.splitlines()
         for line in lines:
@@ -64,28 +72,21 @@ for url in urls:
 
     # HTML 格式
     else:
-        # 用 requests-html 的 html 内容，仍然用BeautifulSoup解析会更稳定
-        soup = BeautifulSoup(response.html.html, 'html.parser')
-
-        # 针对 https://cf.vvhan.com/ 和 https://ip.164746.xyz 主要是 tr 行，其他网站用 li
-        if url in ['https://cf.vvhan.com/', 'https://ip.164746.xyz']:
-            elements = soup.find_all('tr')
-        else:
-            elements = soup.find_all('li')
+        soup = BeautifulSoup(response.text, 'html.parser')
+        elements = soup.find_all('tr') if url in [
+            'https://cf.vvhan.com/',
+            'https://ip.164746.xyz'
+        ] else soup.find_all('li')
 
         for element in elements:
             tds = element.find_all('td')
             for td in tds:
-                parts = []
-                for node in td.descendants:
-                    if isinstance(node, str):
-                        parts.append(node)
+                parts = [node for node in td.descendants if isinstance(node, str)]
                 combined = ''.join(parts).strip()
                 for match in re.findall(ip_pattern, combined):
                     if is_valid_ip(match):
                         extracted.append(match)
 
-    # 去重并仅保留前 5 条有效 IP
     count = 0
     for ip in extracted:
         if ip not in ip_seen:
