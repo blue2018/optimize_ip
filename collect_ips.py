@@ -1,5 +1,4 @@
 import requests
-from bs4 import BeautifulSoup
 import re
 import os
 import ssl
@@ -21,13 +20,13 @@ def is_valid_ip(ip):
         return False
 
 urls = [
-    'https://cf.vvhan.com/',   # HTML 
+    'https://api.vvhan.com/tool/cf_ip',  # 换到 JSON 接口
     'https://ip.164746.xyz',                                  # HTML
     'https://github.com/hubbylei/bestcf/raw/refs/heads/main/bestcf.txt',  # 纯文本
     'https://addressesapi.090227.xyz/CloudFlareYes'           # JSON (其实是动态生成HTML表格)
 ]
 
-ip_pattern = r'\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}'
+ip_pattern = r'\d{1,3}(?:\.\d{1,3}){3}'
 
 if os.path.exists('ip.txt'):
     os.remove('ip.txt')
@@ -42,70 +41,62 @@ for url in urls:
     try:
         response = session.get(url, timeout=10)
         response.raise_for_status()
-    except requests.exceptions.RequestException as e:
+    except Exception as e:
         print(f"[错误] 无法请求 {url}：{e}")
         continue
 
-    content_type = response.headers.get('Content-Type', '')
     extracted = []
+    ct = response.headers.get('Content-Type', '')
 
-    # JSON 格式
-    if 'application/json' in content_type or url.endswith('.json'):
+    # JSON 接口
+    if 'application/json' in ct or url.endswith('/cf_ip'):
         try:
-            data = response.json()
-            if isinstance(data, dict) and 'data' in data:
-                for ip in data['data']:
-                    if is_valid_ip(ip):
-                        extracted.append(ip)
+            data = response.json().get('data', {})
+            for ipver in ['v4', 'v6']:
+                if ipver in data:
+                    for net in data[ipver]:
+                        arr = data[ipver][net]
+                        if isinstance(arr, list) and arr:
+                            best = min(arr, key=lambda x: x.get('latency', float('inf')))
+                            ip = best.get('ip')
+                            if ip and is_valid_ip(ip):
+                                extracted.append(ip)
         except Exception as e:
-            print(f"[错误] JSON 解析失败：{e}")
+            print(f"[错误] JSON 解析失败 {url}：{e}")
             continue
 
-    # 文本格式
-    elif url.endswith('.txt') or 'text/plain' in content_type:
-        lines = response.text.splitlines()
-        for line in lines:
-            ip_matches = re.findall(ip_pattern, line)
-            for ip in ip_matches:
+    # 纯文本
+    elif url.endswith('.txt') or 'text/plain' in ct:
+        for line in response.text.splitlines():
+            for ip in re.findall(ip_pattern, line):
                 if is_valid_ip(ip):
                     extracted.append(ip)
 
-    # HTML 格式
+    # HTML 页面
     else:
+        from bs4 import BeautifulSoup
         soup = BeautifulSoup(response.text, 'html.parser')
-        # 注意这里 https://cf.090227.xyz 返回的是动态生成的表格结构，使用tr获取行
-        elements = soup.find_all('tr') if url in [
-            'https://cf.vvhan.com/',
-            'https://ip.164746.xyz'
-        ] else soup.find_all('li')
+        elements = soup.find_all('tr') if 'cf.vvhan.com' in url or '164746.xyz' in url else soup.find_all('li')
+        for el in elements:
+            for td in el.find_all('td'):
+                txt = ''.join(node for node in td.strings)
+                for ip in re.findall(ip_pattern, txt):
+                    if is_valid_ip(ip):
+                        extracted.append(ip)
 
-        for element in elements:
-            tds = element.find_all('td')
-            for td in tds:
-                # 合并所有直接字符串节点，避免 <b> 拆分数字导致拼接错误
-                parts = []
-                for node in td.descendants:
-                    if isinstance(node, str):
-                        parts.append(node)
-                combined = ''.join(parts).strip()
-                # 只保留有效 IP
-                for match in re.findall(ip_pattern, combined):
-                    if is_valid_ip(match):
-                        extracted.append(match)
-
-    # 去重并仅保留前 5 条有效 IP
+    # 去重并限制每源最多 5 条
     count = 0
     for ip in extracted:
         if ip not in ip_seen:
             ip_seen.add(ip)
             ip_list.append(ip)
             count += 1
-            if count == 5:
+            if count >= 5:
                 break
 
-# 写入文件（按原始顺序）
-with open('ip.txt', 'w') as file:
+# 写入
+with open('ip.txt', 'w') as f:
     for ip in ip_list:
-        file.write(ip + '\n')
+        f.write(ip + '\n')
 
-print(f"✅ 共提取 {len(ip_list)} 个唯一 IP 地址（每源前 5 条，去重后），已保存到 ip.txt。")
+print(f"✅ 共获取 {len(ip_list)} 个唯一 IP，保存至 ip.txt")
