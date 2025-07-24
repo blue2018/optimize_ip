@@ -7,12 +7,14 @@ from requests.adapters import HTTPAdapter
 from urllib3.poolmanager import PoolManager
 from ipaddress import ip_address
 
+# 自定义 HTTPS 适配器
 class TLSAdapter(HTTPAdapter):
     def init_poolmanager(self, *args, **kwargs):
         context = ssl.create_default_context()
         kwargs['ssl_context'] = context
         return super().init_poolmanager(*args, **kwargs)
 
+# 验证 IP（支持 IPv4 和 IPv6）
 def is_valid_ip(ip):
     try:
         ip_address(ip)
@@ -20,19 +22,24 @@ def is_valid_ip(ip):
     except ValueError:
         return False
 
+# 支持 IPv4 和 IPv6 的正则
+ip_pattern = r'(?:\d{1,3}\.){3}\d{1,3}|' \
+             r'(?:[A-Fa-f0-9]{1,4}:){1,7}[A-Fa-f0-9]{1,4}'
+
+# 待抓取的地址
 urls = [
-    'https://cf.vvhan.com/',   # HTML 
-    'https://ip.164746.xyz',                                  # HTML
+    'https://cf.vvhan.com/',   # HTML
+    'https://ip.164746.xyz',   # HTML
     'https://github.com/hubbylei/bestcf/raw/refs/heads/main/bestcf.txt',  # 纯文本
-    #'https://github.com/ymyuuu/IPDB/raw/refs/heads/main/BestCF/bestcfv4.txt',
-    'https://addressesapi.090227.xyz/CloudFlareYes'           # JSON (其实是动态生成HTML表格)
+    'https://github.com/ymyuuu/IPDB/raw/refs/heads/main/BestCF/bestcfv6.txt', #ipv6
+    'https://addressesapi.090227.xyz/CloudFlareYes'  # JSON (动态HTML)
 ]
 
-ip_pattern = r'\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}'
-
+# 若存在旧文件则先删除
 if os.path.exists('ip.txt'):
     os.remove('ip.txt')
 
+# 初始化请求会话
 session = requests.Session()
 session.mount('https://', TLSAdapter())
 
@@ -62,7 +69,7 @@ for url in urls:
             print(f"[错误] JSON 解析失败：{e}")
             continue
 
-    # 文本格式
+    # 纯文本格式
     elif url.endswith('.txt') or 'text/plain' in content_type:
         lines = response.text.splitlines()
         for line in lines:
@@ -74,7 +81,6 @@ for url in urls:
     # HTML 格式
     else:
         soup = BeautifulSoup(response.text, 'html.parser')
-        # 注意这里 https://cf.090227.xyz 返回的是动态生成的表格结构，使用tr获取行
         elements = soup.find_all('tr') if url in [
             'https://cf.vvhan.com/',
             'https://ip.164746.xyz'
@@ -83,18 +89,16 @@ for url in urls:
         for element in elements:
             tds = element.find_all('td')
             for td in tds:
-                # 合并所有直接字符串节点，避免 <b> 拆分数字导致拼接错误
                 parts = []
                 for node in td.descendants:
                     if isinstance(node, str):
                         parts.append(node)
                 combined = ''.join(parts).strip()
-                # 只保留有效 IP
                 for match in re.findall(ip_pattern, combined):
                     if is_valid_ip(match):
                         extracted.append(match)
 
-    # 去重并仅保留前 5 条有效 IP
+    # 每个来源保留前 5 个新 IP（去重）
     count = 0
     for ip in extracted:
         if ip not in ip_seen:
@@ -104,9 +108,9 @@ for url in urls:
             if count == 5:
                 break
 
-# 写入文件（按原始顺序）
-with open('ip.txt', 'w') as file:
+# 写入 ip.txt
+with open('ip.txt', 'w', encoding='utf-8') as file:
     for ip in ip_list:
         file.write(ip + '\n')
 
-print(f"✅ 共提取 {len(ip_list)} 个唯一 IP 地址（每源前 5 条，去重后），已保存到 ip.txt。")
+print(f"✅ 共提取 {len(ip_list)} 个唯一 IP（IPv4 + IPv6），已保存到 ip.txt。")
