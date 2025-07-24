@@ -31,7 +31,7 @@ urls = [
     'https://ip.164746.xyz',   # HTML
     'https://github.com/hubbylei/bestcf/raw/refs/heads/main/bestcf.txt',  # 纯文本
     'https://addressesapi.090227.xyz/CloudFlareYes',  # JSON (动态HTML)
-    'https://github.com/ymyuuu/IPDB/raw/refs/heads/main/BestCF/bestcfv6.txt'  #ipv6
+    'https://addressesapi.090227.xyz/cmcc-ipv6'  #ipv6
 ]
 
 # 删除旧文件
