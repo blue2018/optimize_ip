@@ -14,19 +14,18 @@ class TLSAdapter(HTTPAdapter):
         kwargs['ssl_context'] = context
         return super().init_poolmanager(*args, **kwargs)
 
-# 验证 IP（支持 IPv4 和 IPv6）
+# 返回 ip 对象（用于判断是否有效 + 判断类型）
 def is_valid_ip(ip):
     try:
-        ip_address(ip)
-        return True
+        return ip_address(ip)
     except ValueError:
-        return False
+        return None
 
-# 支持 IPv4 和 IPv6 的正则
+# 支持 IPv4 和 IPv6 的正则表达式
 ip_pattern = r'(?:\d{1,3}\.){3}\d{1,3}|' \
              r'(?:[A-Fa-f0-9]{1,4}:){1,7}[A-Fa-f0-9]{1,4}'
 
-# 待抓取的地址
+# 数据来源
 urls = [
     'https://cf.vvhan.com/',   # HTML
     'https://ip.164746.xyz',   # HTML
@@ -35,11 +34,11 @@ urls = [
     'https://github.com/ymyuuu/IPDB/raw/refs/heads/main/BestCF/bestcfv6.txt'  #ipv6
 ]
 
-# 若存在旧文件则先删除
+# 删除旧文件
 if os.path.exists('ip.txt'):
     os.remove('ip.txt')
 
-# 初始化请求会话
+# 请求会话
 session = requests.Session()
 session.mount('https://', TLSAdapter())
 
@@ -63,13 +62,14 @@ for url in urls:
             data = response.json()
             if isinstance(data, dict) and 'data' in data:
                 for ip in data['data']:
-                    if is_valid_ip(ip):
+                    ip_obj = is_valid_ip(ip)
+                    if ip_obj:
                         extracted.append(ip)
         except Exception as e:
             print(f"[错误] JSON 解析失败：{e}")
             continue
 
-    # 纯文本格式
+    # 文本格式
     elif url.endswith('.txt') or 'text/plain' in content_type:
         lines = response.text.splitlines()
         for line in lines:
@@ -98,7 +98,7 @@ for url in urls:
                     if is_valid_ip(match):
                         extracted.append(match)
 
-    # 每个来源保留前 5 个新 IP（去重）
+    # 每来源最多提取 5 个唯一 IP
     count = 0
     for ip in extracted:
         if ip not in ip_seen:
@@ -108,9 +108,12 @@ for url in urls:
             if count == 5:
                 break
 
-# 写入 ip.txt
+# 写入文件，IPv6 加中括号
 with open('ip.txt', 'w', encoding='utf-8') as file:
     for ip in ip_list:
-        file.write(ip + '\n')
+        ip_obj = is_valid_ip(ip)
+        if ip_obj:
+            formatted_ip = f"[{ip}]" if ip_obj.version == 6 else ip
+            file.write(formatted_ip + '\n')
 
-print(f"✅ 共提取 {len(ip_list)} 个唯一 IP（IPv4 + IPv6），已保存到 ip.txt。")
+print(f"✅ 共提取 {len(ip_list)} 个唯一 IP（IPv4 + IPv6），IPv6 已加中括号，已保存到 ip.txt。")
