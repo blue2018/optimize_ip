@@ -3,6 +3,7 @@ from bs4 import BeautifulSoup
 import re
 import os
 import ssl
+import socket
 from requests.adapters import HTTPAdapter
 from urllib3.poolmanager import PoolManager
 from ipaddress import ip_address
@@ -20,22 +21,12 @@ def is_valid_ip(ip):
     except ValueError:
         return False
 
-def get_ip_info(ip):
-    """使用 韩小韩 Web API 获取单个 IP 的地理信息（国家/省/市）"""
-    url = 'https://api.vvhan.com/api/ipInfo'
-    params = {'ip': ip}
-    resp = requests.get(url, params=params, timeout=10)
-    resp.raise_for_status()
-    data = resp.json()
-    info = data.get('info', {})
-    return {
-        'ip': ip,
-        'country': info.get('country', ''),
-        'prov': info.get('prov', ''),
-        'city': info.get('city', '')
-    }
+def try_socket_lookup(domain):
+    try:
+        return socket.gethostbyname(domain)
+    except Exception:
+        return None
 
-# 原始 URL 列表
 urls = [
     'https://cf.vvhan.com/',
     'https://ip.164746.xyz',
@@ -45,74 +36,79 @@ urls = [
 
 ip_pattern = r'\d{1,3}(?:\.\d{1,3}){3}'
 
-# 删除旧文件
 if os.path.exists('ip.txt'):
     os.remove('ip.txt')
 
 session = requests.Session()
 session.mount('https://', TLSAdapter())
+session.headers.update({
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                  "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36"
+})
 
 ip_seen = set()
 ip_list = []
 
 for url in urls:
+    print(f"🔍 正在请求 {url}")
     try:
-        resp = session.get(url, timeout=10)
-        resp.raise_for_status()
-    except Exception as e:
-        print(f"[错误] 请求 {url} 失败：{e}")
+        response = session.get(url, timeout=10)
+        response.raise_for_status()
+    except requests.exceptions.RequestException as e:
+        print(f"[错误] 请求失败 {url}：{e}")
+        # 试用 socket 域名解析作为备用方式
+        domain = re.sub(r'^https?://', '', url).split('/')[0]
+        fallback_ip = try_socket_lookup(domain)
+        if fallback_ip and is_valid_ip(fallback_ip):
+            print(f"🌐 域名解析获得 IP：{fallback_ip}")
+            if fallback_ip not in ip_seen:
+                ip_seen.add(fallback_ip)
+                ip_list.append(fallback_ip)
         continue
 
-    ct = resp.headers.get('Content-Type', '')
     extracted = []
+    content_type = response.headers.get('Content-Type', '')
 
-    if 'application/json' in ct or url.endswith('.json'):
+    # JSON
+    if 'application/json' in content_type or url.endswith('.json'):
         try:
-            js = resp.json()
-            for ip in js.get('data', []):
-                if is_valid_ip(ip):
-                    extracted.append(ip)
-        except:
-            pass
+            data = response.json()
+            if isinstance(data, dict) and 'data' in data:
+                for ip in data['data']:
+                    if is_valid_ip(ip):
+                        extracted.append(ip)
+        except Exception as e:
+            print(f"[错误] JSON 解析失败：{e}")
 
-    elif url.endswith('.txt') or 'text/plain' in ct:
-        for line in resp.text.splitlines():
+    # 纯文本
+    elif url.endswith('.txt') or 'text/plain' in content_type:
+        for line in response.text.splitlines():
             for ip in re.findall(ip_pattern, line):
                 if is_valid_ip(ip):
                     extracted.append(ip)
 
+    # HTML
     else:
-        soup = BeautifulSoup(resp.text, 'html.parser')
-        elements = soup.find_all('tr') if url in urls[:2] else soup.find_all('li')
-        for e in elements:
-            for td in e.find_all('td'):
-                combined = ''.join(node for node in td.descendants if isinstance(node, str)).strip()
-                for ip in re.findall(ip_pattern, combined):
-                    if is_valid_ip(ip):
-                        extracted.append(ip)
+        soup = BeautifulSoup(response.text, 'html.parser')
+        elements = soup.find_all('tr') if 'vvhan.com' in url or '164746.xyz' in url else soup.find_all('li')
+        for el in elements:
+            text = ''.join(
+                node for node in el.strings
+            ).strip()
+            for ip in re.findall(ip_pattern, text):
+                if is_valid_ip(ip):
+                    extracted.append(ip)
 
-    # 每源前 5 条去重
-    cnt = 0
+    count = 0
     for ip in extracted:
         if ip not in ip_seen:
             ip_seen.add(ip)
             ip_list.append(ip)
-            cnt += 1
-            if cnt >= 5:
+            count += 1
+            if count == 5:
                 break
 
-# 写入 ip.txt
+print(f"✅ 共提取 {len(ip_list)} 个唯一 IP（每源最多前 5 条，去重），保存于 ip.txt。")
 with open('ip.txt', 'w') as f:
     for ip in ip_list:
         f.write(ip + '\n')
-
-print(f"✅ 共提取 {len(ip_list)} 个唯一 IP，已写入 ip.txt")
-
-# 调用 API 获取地理信息
-print("\n📌 IP 地理信息如下：")
-for ip in ip_list:
-    try:
-        info = get_ip_info(ip)
-        print(f"- {ip} → 国家：{info['country']}，省：{info['prov']}，市：{info['city']}")
-    except Exception as e:
-        print(f"- {ip} → 获取信息失败：{e}")
