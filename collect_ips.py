@@ -6,6 +6,10 @@ import ssl
 from requests.adapters import HTTPAdapter
 from urllib3.poolmanager import PoolManager
 from ipaddress import ip_address
+from selenium import webdriver
+from selenium.webdriver.chrome.options import Options
+from webdriver_manager.chrome import ChromeDriverManager
+import time
 
 class TLSAdapter(HTTPAdapter):
     def init_poolmanager(self, *args, **kwargs):
@@ -20,11 +24,44 @@ def is_valid_ip(ip):
     except ValueError:
         return False
 
+def extract_from_vvhan():
+    # 启用无头浏览器
+    chrome_options = Options()
+    chrome_options.add_argument("--headless")
+    chrome_options.add_argument("--disable-gpu")
+    chrome_options.add_argument("--no-sandbox")
+    driver = webdriver.Chrome(ChromeDriverManager().install(), options=chrome_options)
+
+    ip_list = []
+
+    try:
+        driver.get("https://cf.vvhan.com/")
+        time.sleep(2)  # 等待 JS 渲染完成
+
+        rows = driver.find_elements("tag name", "tr")
+        for row in rows:
+            tds = row.find_elements("tag name", "td")
+            for td in tds:
+                b_tags = td.find_elements("tag name", "b")
+                ip_candidate = ''.join(b.text for b in b_tags)
+                if is_valid_ip(ip_candidate):
+                    ip_list.append(ip_candidate)
+                if len(ip_list) >= 5:
+                    break
+            if len(ip_list) >= 5:
+                break
+    except Exception as e:
+        print("[错误] Selenium 抓取 vvhan.com 失败：", e)
+    finally:
+        driver.quit()
+
+    return ip_list
+
+# 普通网页和API抓取
 urls = [
-    'https://cf.vvhan.com/',   # 特殊 HTML结构
-    'https://ip.164746.xyz',   # 正常HTML结构
-    'https://github.com/hubbylei/bestcf/raw/refs/heads/main/bestcf.txt',  # 纯文本
-    'https://addressesapi.090227.xyz/CloudFlareYes'           # JSON结构
+    'https://ip.164746.xyz',
+    'https://github.com/hubbylei/bestcf/raw/refs/heads/main/bestcf.txt',
+    'https://addressesapi.090227.xyz/CloudFlareYes'
 ]
 
 ip_pattern = r'\d{1,3}(?:\.\d{1,3}){3}'
@@ -38,6 +75,13 @@ session.mount('https://', TLSAdapter())
 ip_seen = set()
 ip_list = []
 
+# 先处理 vvhan.com（用 Selenium）
+for ip in extract_from_vvhan():
+    if ip not in ip_seen:
+        ip_seen.add(ip)
+        ip_list.append(ip)
+
+# 处理其他 URL
 for url in urls:
     try:
         response = session.get(url, timeout=10)
@@ -49,7 +93,6 @@ for url in urls:
     content_type = response.headers.get('Content-Type', '')
     extracted = []
 
-    # JSON 格式
     if 'application/json' in content_type or url.endswith('.json'):
         try:
             data = response.json()
@@ -57,55 +100,22 @@ for url in urls:
                 for ip in data['data']:
                     if is_valid_ip(ip):
                         extracted.append(ip)
-        except Exception as e:
-            print(f"[错误] JSON 解析失败：{e}")
+        except:
             continue
-
-    # 文本格式
     elif url.endswith('.txt') or 'text/plain' in content_type:
-        lines = response.text.splitlines()
-        for line in lines:
-            ip_matches = re.findall(ip_pattern, line)
-            for ip in ip_matches:
+        for line in response.text.splitlines():
+            for ip in re.findall(ip_pattern, line):
                 if is_valid_ip(ip):
                     extracted.append(ip)
-
-    # HTML 格式
     else:
         soup = BeautifulSoup(response.text, 'html.parser')
-
-        if 'vvhan.com' in url:
-            # 特殊处理 vvhan 的结构，IP 拆在多个 <b> 标签中
-            rows = soup.find_all('tr')
-            for row in rows:
-                tds = row.find_all('td')
-                if not tds:
-                    continue
-                for td in tds:
-                    b_tags = td.find_all('b')
-                    ip_candidate = ''.join(b.get_text(strip=True) for b in b_tags)
-                    if is_valid_ip(ip_candidate):
-                        extracted.append(ip_candidate)
-        elif 'ip.164746.xyz' in url:
-            # 正常 HTML 表格结构
-            rows = soup.find_all('tr')
-            for row in rows:
-                tds = row.find_all('td')
-                for td in tds:
-                    ip_matches = re.findall(ip_pattern, td.get_text(strip=True))
-                    for ip in ip_matches:
-                        if is_valid_ip(ip):
-                            extracted.append(ip)
-        else:
-            # 其它HTML结构，尝试 li 标签
-            items = soup.find_all('li')
-            for item in items:
-                ip_matches = re.findall(ip_pattern, item.get_text(strip=True))
-                for ip in ip_matches:
+        rows = soup.find_all('tr')
+        for row in rows:
+            for td in row.find_all('td'):
+                for ip in re.findall(ip_pattern, td.get_text()):
                     if is_valid_ip(ip):
                         extracted.append(ip)
 
-    # 去重并仅保留前 5 条有效 IP
     count = 0
     for ip in extracted:
         if ip not in ip_seen:
@@ -116,8 +126,8 @@ for url in urls:
                 break
 
 # 写入文件
-with open('ip.txt', 'w') as file:
+with open('ip.txt', 'w') as f:
     for ip in ip_list:
-        file.write(ip + '\n')
+        f.write(ip + '\n')
 
-print(f"✅ 共提取 {len(ip_list)} 个唯一 IP 地址（每源前 5 条，去重后），已保存到 ip.txt。")
+print(f"✅ 共提取 {len(ip_list)} 个唯一 IP 地址，已保存到 ip.txt")
