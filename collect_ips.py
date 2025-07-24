@@ -21,10 +21,10 @@ def is_valid_ip(ip):
         return False
 
 urls = [
-    #'https://cf.vvhan.com/',   # HTML 
+    'https://cf.vvhan.com/',   # HTML 
     'https://ip.164746.xyz',                                  # HTML
-    #'https://github.com/hubbylei/bestcf/raw/refs/heads/main/bestcf.txt',  # 纯文本
-    #'https://addressesapi.090227.xyz/CloudFlareYes'           # JSON (其实是动态生成HTML表格)
+    'https://github.com/hubbylei/bestcf/raw/refs/heads/main/bestcf.txt',  # 纯文本
+    'https://addressesapi.090227.xyz/CloudFlareYes'           # JSON (其实是动态生成HTML表格)
 ]
 
 ip_pattern = r'\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}'
@@ -75,7 +75,7 @@ for url in urls:
         soup = BeautifulSoup(response.text, 'html.parser')
         # 注意这里 https://cf.090227.xyz 返回的是动态生成的表格结构，使用tr获取行
         elements = soup.find_all('tr') if url in [
-            #'https://cf.vvhan.com/',
+            'https://cf.vvhan.com/',
             'https://ip.164746.xyz'
         ] else soup.find_all('li')
 
