@@ -24,6 +24,8 @@ urls = [
     'https://cf.vvhan.com/',   # HTML 
     'https://ip.164746.xyz',                                  # HTML
     'https://github.com/hubbylei/bestcf/raw/refs/heads/main/bestcf.txt',  # 纯文本
+    'https://github.com/ZhiXuanWang/cf-speed-dns/raw/refs/heads/main/ipTop10.html',
+    'https://github.com/ymyuuu/IPDB/raw/refs/heads/main/BestCF/bestcfv4.txt',
     'https://addressesapi.090227.xyz/CloudFlareYes'           # JSON (其实是动态生成HTML表格)
 ]
 
