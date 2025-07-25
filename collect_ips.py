@@ -29,7 +29,7 @@ ip_pattern = r'(?:\d{1,3}\.){3}\d{1,3}|' \
 urls = [
     #'https://cf.vvhan.com/',   # HTML
     'https://ip.164746.xyz',   # HTML
-    'https://github.com/hubbylei/bestcf/raw/refs/heads/main/bestcf.txt',  # 纯文本
+    'https://raw.githubusercontent.com/hubbylei/bestcf/refs/heads/main/bestcf.txt',  # 纯文本
     'https://raw.githubusercontent.com/ymyuuu/IPDB/refs/heads/main/BestCF/bestcfv4.txt',
     'https://raw.githubusercontent.com/ZhiXuanWang/cf-speed-dns/refs/heads/main/ipTop10.html',
     'https://addressesapi.090227.xyz/CloudFlareYes'  # JSON (动态HTML)
