@@ -6,7 +6,7 @@ concurrency:
 
 on:
   schedule:
-    - cron: '0 1 * * *'  # 每天北京时间上午9点
+    - cron: '0 1,10 * * *'  # 每天北京时间上午9点
   workflow_dispatch:        # 保留手动触发
   push:
 
