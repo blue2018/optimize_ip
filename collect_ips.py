@@ -99,13 +99,21 @@ for url in urls:
                     if is_valid_ip(match):
                         extracted.append(match)
 
-# === 修改的部分：仅取第 4 至第 8 个 IP ===
-    selected_ips = extracted[3:8]  # Python 索引从 0 开始，3表示第4个
-
-    for ip in selected_ips:
+    # 获取第4至第8个唯一IP（索引3-7）
+    source_unique = []
+    for ip in extracted:
+        if ip not in source_unique:
+            source_unique.append(ip)
+    
+    # 跳过前3个，获取第4-8个（共5个）
+    selected = source_unique[3:8]
+    
+    for ip in selected:
         if ip not in ip_seen:
-            ip_s(een.add(ip)
+            ip_seen.add(ip)
             ip_list.append(ip)
+    
+    print(f"[来源] {url} - 提取了 {len(selected)} 个IP（第4-8个）")
 
 # 写入文件，IPv6 加中括号
 with open('ip.txt', 'w', encoding='utf-8') as file:
