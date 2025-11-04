@@ -27,7 +27,7 @@ ip_pattern = r'(?:\d{1,3}\.){3}\d{1,3}|' \
 
 # 数据来源
 urls = [
-    'https://cf.vvhan.com/',   # HTML
+    #'https://cf.vvhan.com/',   # HTML
     'https://ip.164746.xyz',   # HTML
     'https://raw.githubusercontent.com/hubbylei/bestcf/refs/heads/main/bestcf.txt',  # 纯文本
     'https://raw.githubusercontent.com/ymyuuu/IPDB/refs/heads/main/BestCF/bestcfv4.txt',
