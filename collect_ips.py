@@ -99,19 +99,15 @@ for url in urls:
                     if is_valid_ip(match):
                         extracted.append(match)
 
-# 每来源提取第4~8个唯一 IP（索引3~7）
-unique_extracted = []
-for ip in extracted:
-    if ip not in unique_extracted:
-        unique_extracted.append(ip)
-
-# 取索引3~7的部分（Python切片会自动忽略越界情况）
-selected_ips = unique_extracted[3:8]
-
-for ip in selected_ips:
-    if ip not in ip_seen:
-        ip_seen.add(ip)
-        ip_list.append(ip)
+# 每来源最多提取 5 个唯一 IP
+    count = 0
+    for ip in extracted:
+        if ip not in ip_seen:
+            ip_seen.add(ip)
+            ip_list.append(ip)
+            count += 1
+            if count == 5:
+                break
 
 # 写入文件，IPv6 加中括号
 with open('ip.txt', 'w', encoding='utf-8') as file:
