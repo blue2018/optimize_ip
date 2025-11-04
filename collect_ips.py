@@ -3,43 +3,52 @@ from bs4 import BeautifulSoup
 import re
 import os
 import ssl
+import time
 from requests.adapters import HTTPAdapter
 from urllib3.poolmanager import PoolManager
 from ipaddress import ip_address
 
-# 自定义 HTTPS 适配器
 class TLSAdapter(HTTPAdapter):
     def init_poolmanager(self, *args, **kwargs):
         context = ssl.create_default_context()
         kwargs['ssl_context'] = context
         return super().init_poolmanager(*args, **kwargs)
 
-# 返回 ip 对象（用于判断是否有效 + 判断类型）
 def is_valid_ip(ip):
     try:
         return ip_address(ip)
     except ValueError:
         return None
 
-# 支持 IPv4 和 IPv6 的正则表达式
+# ⚡ 用 HTTP 请求延迟代替 ping（在 GitHub 上可运行）
+def http_ping(ip):
+    ip_obj = is_valid_ip(ip)
+    if not ip_obj:
+        return None
+
+    url = f"https://[{ip}]" if ip_obj.version == 6 else f"http://{ip}"
+    try:
+        start = time.time()
+        # Cloudflare 节点多数支持 HTTP 请求
+        requests.get(url, timeout=2)
+        return (time.time() - start) * 1000  # 转换为毫秒
+    except Exception:
+        return None
+
 ip_pattern = r'(?:\d{1,3}\.){3}\d{1,3}|' \
              r'(?:[A-Fa-f0-9]{1,4}:){1,7}[A-Fa-f0-9]{1,4}'
 
-# 数据来源
 urls = [
-    #'https://cf.vvhan.com/',   # HTML
-    'https://ip.164746.xyz',   # HTML
-    'https://raw.githubusercontent.com/hubbylei/bestcf/refs/heads/main/bestcf.txt',  # 纯文本
+    'https://ip.164746.xyz',
+    'https://raw.githubusercontent.com/hubbylei/bestcf/refs/heads/main/bestcf.txt',
     'https://raw.githubusercontent.com/ymyuuu/IPDB/refs/heads/main/BestCF/bestcfv4.txt',
     'https://raw.githubusercontent.com/ZhiXuanWang/cf-speed-dns/refs/heads/main/ipTop10.html',
-    'https://addressesapi.090227.xyz/CloudFlareYes'  # JSON (动态HTML)
+    'https://addressesapi.090227.xyz/CloudFlareYes'
 ]
 
-# 删除旧文件
 if os.path.exists('ip.txt'):
     os.remove('ip.txt')
 
-# 请求会话
 session = requests.Session()
 session.mount('https://', TLSAdapter())
 
@@ -57,7 +66,6 @@ for url in urls:
     content_type = response.headers.get('Content-Type', '')
     extracted = []
 
-    # JSON 格式
     if 'application/json' in content_type or url.endswith('.json'):
         try:
             data = response.json()
@@ -70,16 +78,12 @@ for url in urls:
             print(f"[错误] JSON 解析失败：{e}")
             continue
 
-    # 文本格式
     elif url.endswith('.txt') or 'text/plain' in content_type:
-        lines = response.text.splitlines()
-        for line in lines:
-            ip_matches = re.findall(ip_pattern, line)
-            for ip in ip_matches:
+        for line in response.text.splitlines():
+            for ip in re.findall(ip_pattern, line):
                 if is_valid_ip(ip):
                     extracted.append(ip)
 
-    # HTML 格式
     else:
         soup = BeautifulSoup(response.text, 'html.parser')
         elements = soup.find_all('tr') if url in [
@@ -88,18 +92,11 @@ for url in urls:
         ] else soup.find_all('li')
 
         for element in elements:
-            tds = element.find_all('td')
-            for td in tds:
-                parts = []
-                for node in td.descendants:
-                    if isinstance(node, str):
-                        parts.append(node)
-                combined = ''.join(parts).strip()
-                for match in re.findall(ip_pattern, combined):
-                    if is_valid_ip(match):
-                        extracted.append(match)
+            text = ''.join(t.get_text(strip=True) for t in element.find_all('td') or [element])
+            for ip in re.findall(ip_pattern, text):
+                if is_valid_ip(ip):
+                    extracted.append(ip)
 
- # 每来源最多提取 5 个唯一 IP
     count = 0
     for ip in extracted:
         if ip not in ip_seen:
@@ -107,14 +104,26 @@ for url in urls:
             ip_list.append(ip)
             count += 1
             if count == 5:
-                break   
+                break
 
-# 写入文件，IPv6 加中括号
-with open('ip.txt', 'w', encoding='utf-8') as file:
-    for ip in ip_list:
+# ⚙️ 使用 HTTP 请求延迟替代 ping
+ping_results = []
+print("\n开始 HTTP 延迟测试（GitHub 环境）...\n")
+for ip in ip_list:
+    latency = http_ping(ip)
+    if latency is not None:
+        print(f"{ip:<40} → {latency:.1f} ms")
+        if latency >= 100:
+            ping_results.append((ip, latency))
+    else:
+        print(f"{ip:<40} → 无响应")
+
+ping_results.sort(key=lambda x: x[1])
+
+with open('ip.txt', 'w', encoding='utf-8') as f:
+    for ip, ms in ping_results:
         ip_obj = is_valid_ip(ip)
-        if ip_obj:
-            formatted_ip = f"[{ip}]" if ip_obj.version == 6 else ip
-            file.write(formatted_ip + '\n')
+        formatted_ip = f"[{ip}]" if ip_obj.version == 6 else ip
+        f.write(f"{formatted_ip}  {ms:.1f}ms\n")
 
-print(f"✅ 共提取 {len(ip_list)} 个唯一 IP（IPv4 + IPv6），IPv6 已加中括号，已保存到 ip.txt。")
+print(f"\n✅ 共提取 {len(ping_results)} 个 HTTP 延迟 ≥100ms 的 IP，已保存到 ip.txt。")
